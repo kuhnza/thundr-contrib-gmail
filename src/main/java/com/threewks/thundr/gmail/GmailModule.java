@@ -47,10 +47,10 @@ public class GmailModule extends BaseModule {
 	public void configure(UpdatableInjectionContext injectionContext) {
 		super.configure(injectionContext);
 
-		// applications using this module must provide a 'host' config property
+		// applications using this module must provide a 'host' config property (used to construct the callback URL)
 		getRequiredProperty(injectionContext, "host");
 
-		// applications using this module must provide 'gmailOAuthClientId' and 'gmailOAuthClientSecret' config properties
+		// applications using this module must provide an OAuth client id and secret
 		String clientId = getRequiredProperty(injectionContext, "gmailOAuthClientId");
 		String clientSecret = getRequiredProperty(injectionContext, "gmailOAuthClientSecret");
 
@@ -75,14 +75,19 @@ public class GmailModule extends BaseModule {
 		addRoutes(injectionContext);
 	}
 
+	/**
+	 * Add the routes required by this module.
+	 *
+	 * @param injectionContext the injection context to get the router from.
+	 */
 	private void addRoutes(InjectionContext injectionContext) {
 		Router router = injectionContext.get(Router.class);
 
-		// optional config to change the base path of the gmail routes (to prevent clashes)
+		// optional config property to override the root path of the gmail setup routes (to prevent clashes)
 		String gmailAdminRootPath = getOptionalProperty(injectionContext, "gmailAdminRootPath", "/admin/gmail");
 
 		router.get(String.format("%s/setup", gmailAdminRootPath), GmailAdminController.class, "setup", "gmail.admin.setup");
-		router.get(String.format("%s/oauth2callback", gmailAdminRootPath), GmailAdminController.class, "oauthCallback", "gmail.admin.oauthCallback");
+		router.get(String.format("%s/setup/oauth2callback", gmailAdminRootPath), GmailAdminController.class, "oauthCallback", "gmail.admin.oauthCallback");
 	}
 
 	/**
@@ -128,7 +133,7 @@ public class GmailModule extends BaseModule {
 	private <T> T getRequredDependency(InjectionContext injectionContext, Class<T> type) {
 		T dependency = injectionContext.get(type);
 		if (dependency == null) {
-			throw new ConfigurationException("Required Dependency of type `%s` not found.", type.getName());
+			throw new ConfigurationException("Required dependency of type `%s` not found. Did you forget to inject it?", type.getName());
 		}
 		return dependency;
 	}

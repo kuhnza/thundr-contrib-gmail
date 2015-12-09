@@ -17,12 +17,18 @@
  */
 package com.threewks.thundr.gmail;
 
-import com.threewks.thundr.exception.BaseException;
+import org.junit.Test;
 
-public class GmailException extends BaseException {
+import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertThat;
 
-    public GmailException(Throwable cause) {
-        super(cause);
-    }
+public class GmailExceptionTest {
+
+	@Test
+	public void shouldConstructException() {
+		RuntimeException cause = new RuntimeException();
+		GmailException exception = new GmailException(cause);
+		assertThat(exception.getCause(), is((Throwable) cause));
+	}
 
 }

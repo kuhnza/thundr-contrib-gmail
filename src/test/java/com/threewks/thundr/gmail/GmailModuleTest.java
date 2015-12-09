@@ -18,105 +18,122 @@
 package com.threewks.thundr.gmail;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
+import com.google.api.client.http.HttpTransport;
+import com.google.api.client.util.store.DataStoreFactory;
 import com.threewks.thundr.configuration.ConfigurationException;
-import com.threewks.thundr.injection.InjectionContextImpl;
 import com.threewks.thundr.injection.UpdatableInjectionContext;
 import com.threewks.thundr.module.DependencyRegistry;
-import com.threewks.thundr.route.HttpMethod;
-import com.threewks.thundr.route.Route;
 import com.threewks.thundr.route.Router;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
+import org.mockito.Answers;
+import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertThat;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
 
-@RunWith(MockitoJUnitRunner.class)
-public class GmailModuleTest {
+@RunWith(MockitoJUnitRunner.class) public class GmailModuleTest {
 
 	@Rule public ExpectedException expectedException = ExpectedException.none();
 
-	private UpdatableInjectionContext injectionContext;
-	private DependencyRegistry dependencyRegistry;
-	private Router router;
+	@Mock(answer = Answers.RETURNS_DEEP_STUBS) private UpdatableInjectionContext injectionContext;
+	@Mock private Router router;
+	@Mock private DependencyRegistry dependencyRegistry;
 
 	private GmailModule module;
 
-	@Before
-	public void before() {
+	@Before public void before() {
 
-		router = new Router();
-
-		dependencyRegistry = new DependencyRegistry();
-
-		injectionContext = new InjectionContextImpl();
-		injectionContext.inject(router).as(Router.class);
-		injectionContext.inject("blogId").named("bloggerBlogId").as(String.class);
-		injectionContext.inject("oAuthUserId").named("bloggerOAuthUserId").as(String.class);
-		injectionContext.inject("oAuthClientId").named("bloggerOAuthClientId").as(String.class);
-		injectionContext.inject("oAuthClientSecret").named("bloggerOAuthClientSecret").as(String.class);
+		// mock behaviour
+		when(injectionContext.get(String.class, "host")).thenReturn("https://gradresearchforms.apps.monash.edu");
+		when(injectionContext.get(String.class, "gmailOAuthClientId")).thenReturn("oAuthClientId");
+		when(injectionContext.get(String.class, "gmailOAuthClientSecret")).thenReturn("oAuthClientSecret");
+		when(injectionContext.get(String.class, "gmailAdminRootPath")).thenReturn(null);
+		when(injectionContext.get(DataStoreFactory.class)).thenReturn(mock(DataStoreFactory.class));
+		when(injectionContext.get(HttpTransport.class)).thenReturn(mock(HttpTransport.class));
+		when(injectionContext.get(Router.class)).thenReturn(router);
 
 		module = new GmailModule();
 	}
 
-	@Test
-	public void shouldRequireDependencies() {
+	@Test public void shouldNotAddAnyDependencies() {
 		module.requires(dependencyRegistry);
 
-		assertThat(dependencyRegistry.getDependencies(), hasSize(1));
+		verify(dependencyRegistry, never()).addDependency(any(Class.class));
 	}
 
-	@Test
-	public void shouldConfigureOAuthAndServices() {
+	@Test public void shouldConfigureOAuthAndServices() {
 		module.configure(injectionContext);
 
-		assertThat(injectionContext.get(GoogleAuthorizationCodeFlow.class, "bloggerAuthorizationCodeFlow"), notNullValue());
+		assertThat(injectionContext.get(GoogleAuthorizationCodeFlow.class, "gmailAuthorizationCodeFlow"), notNullValue());
 	}
 
-	@Test
-	public void shouldAddRoutesOnStart() {
+	@Test public void shouldAddRoutesOnStart() {
 		module.start(injectionContext);
 
-		assertRoute(router.getNamedRoute("blog.admin.setup"), HttpMethod.GET, "/admin/blog/setup");
-		assertRoute(router.getNamedRoute("blog.admin.setup.oauthCallback"), HttpMethod.GET, "/admin/blog/setup/oauth2callback");
+		verify(router).get("/admin/gmail/setup", GmailAdminController.class, "setup", "gmail.admin.setup");
+		verify(router).get("/admin/gmail/setup/oauth2callback", GmailAdminController.class, "oauthCallback", "gmail.admin.oauthCallback");
 	}
 
-	@Test
-	public void shouldThrowExceptionIfOAuthClientIdPropertyNotSet() {
+	@Test public void shouldThrowExceptionIfHostPropertyNotSet() {
 		expectedException.expect(ConfigurationException.class);
-		expectedException.expectMessage(is("Property `bloggerOAuthClientId` not found. Did you forget to add it to application.properties?"));
+		expectedException.expectMessage(is("Property `host` not found. Did you forget to add it to application.properties?"));
 
-		injectionContext = new InjectionContextImpl();
-		module.configure(injectionContext);
-	}
-
-	@Test
-	public void shouldThrowExceptionIfOAuthClientSecretPropertyNotSet() {
-		expectedException.expect(ConfigurationException.class);
-		expectedException.expectMessage(is("Property `bloggerOAuthClientSecret` not found. Did you forget to add it to application.properties?"));
-
-		injectionContext = new InjectionContextImpl();
-		injectionContext.inject("oAuthClientId").named("bloggerOAuthClientId").as(String.class);
+		when(injectionContext.get(String.class, "host")).thenReturn(null);
 
 		module.configure(injectionContext);
 	}
 
-	@Test
-	public void shoudlAllowOverridingOfAdminBlogPath() {
-		injectionContext.inject("/custom/root/blog/path").named("blogAdminRootPath").as(String.class);
+	@Test public void shouldThrowExceptionIfOAuthClientIdPropertyNotSet() {
+		expectedException.expect(ConfigurationException.class);
+		expectedException.expectMessage(is("Property `gmailOAuthClientId` not found. Did you forget to add it to application.properties?"));
+
+		when(injectionContext.get(String.class, "gmailOAuthClientId")).thenReturn(null);
+
+		module.configure(injectionContext);
+	}
+
+	@Test public void shouldThrowExceptionIfOAuthClientSecretPropertyNotSet() {
+		expectedException.expect(ConfigurationException.class);
+		expectedException.expectMessage(is("Property `gmailOAuthClientSecret` not found. Did you forget to add it to application.properties?"));
+
+		when(injectionContext.get(String.class, "gmailOAuthClientSecret")).thenReturn(null);
+
+		module.configure(injectionContext);
+	}
+
+	@Test public void shouldThrowExceptionIfDataStoreFactoryDependencyNotSet() {
+		expectedException.expect(ConfigurationException.class);
+		expectedException.expectMessage(is("Required dependency of type `com.google.api.client.util.store.DataStoreFactory` not found. Did you forget to inject it?"));
+
+		when(injectionContext.get(DataStoreFactory.class)).thenReturn(null);
+
+		module.configure(injectionContext);
+	}
+
+	@Test public void shouldThrowExceptionIfHttpTransportDependencyNotSet() {
+		expectedException.expect(ConfigurationException.class);
+		expectedException.expectMessage(is("Required dependency of type `com.google.api.client.http.HttpTransport` not found. Did you forget to inject it?"));
+
+		when(injectionContext.get(HttpTransport.class)).thenReturn(null);
+
+		module.configure(injectionContext);
+	}
+
+	@Test public void shoudlAllowOverridingOfAdminRootPath() {
+		when(injectionContext.get(String.class, "gmailAdminRootPath")).thenReturn("/custom/admin/gmail");
 
 		module.start(injectionContext);
 
-		assertRoute(router.getNamedRoute("blog.admin.setup"), HttpMethod.GET, "/custom/root/blog/path/setup");
-		assertRoute(router.getNamedRoute("blog.admin.setup.oauthCallback"), HttpMethod.GET, "/custom/root/blog/path/setup/oauth2callback");
+		verify(router).get("/custom/admin/gmail/setup", GmailAdminController.class, "setup", "gmail.admin.setup");
+		verify(router).get("/custom/admin/gmail/setup/oauth2callback", GmailAdminController.class, "oauthCallback", "gmail.admin.oauthCallback");
 	}
 
-	private void assertRoute(Route route, HttpMethod method, String url) {
-		assertThat(route.getMethod(), is(method));
-		assertThat(route.getRoute(), is(url));
-	}
 }

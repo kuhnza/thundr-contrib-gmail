@@ -1,3 +1,20 @@
+/*
+ * This file is a component of thundr, a software library from 3wks.
+ * Read more: http://3wks.github.io/thundr/
+ * Copyright (C) 2015 3wks, <thundr@3wks.com.au>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.threewks.thundr.gmail;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
@@ -42,7 +59,7 @@ public class GmailAdminControllerTest {
 	public void before() throws IOException {
 
 		router = new Router();
-		router.get("/admin/gmail/setup/oauth2callback", GmailAdminController.class, "oauthCallback", "gmail.admin.setup.oauthCallback");
+		router.get("/admin/gmail/setup/oauth2callback", GmailAdminController.class, "oauthCallback", "gmail.admin.oauthCallback");
 
 		Collection<String> scopes = Collections.singleton(GmailScopes.GMAIL_COMPOSE);
 		GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow
@@ -50,13 +67,13 @@ public class GmailAdminControllerTest {
 				.setDataStoreFactory(dataStoreFactory)
 				.build();
 
-		controller = new GmailAdminController(flow, router, "https://monash-scholarship-form-dev.appspot.com");
+		controller = new GmailAdminController(flow, router, "https://gradresearchforms.apps.monash.edu");
 	}
 
 	@Test
 	public void shouldSetupAuhorisationUrlAndRedirect() {
 		RedirectView view = controller.setup();
-		assertThat(view.getRedirect(), is("https://accounts.google.com/o/oauth2/auth?access_type=offline&approval_prompt=force&client_id=clientId&redirect_uri=https://monash-scholarship-form-dev.appspot.com/admin/gmail/setup/oauth2callback&response_type=code&scope=https://www.googleapis.com/auth/gmail.compose"));
+		assertThat(view.getRedirect(), is("https://accounts.google.com/o/oauth2/auth?access_type=offline&approval_prompt=force&client_id=clientId&redirect_uri=https://gradresearchforms.apps.monash.edu/admin/gmail/setup/oauth2callback&response_type=code&scope=https://www.googleapis.com/auth/gmail.compose"));
 	}
 
 	@Test
@@ -74,7 +91,7 @@ public class GmailAdminControllerTest {
 		controller = new GmailAdminController(flow, router, "https://monash-scholarship-form-dev.appspot.com");
 
 		StringView view = controller.oauthCallback("12345");
-		assertThat(view.content(), is("Setup complete!"));
+		assertThat(view.content(), is("Gmail setup complete"));
 
 		verify(flow).newTokenRequest("12345");
 		verify(tokenRequest).setRedirectUri("https://monash-scholarship-form-dev.appspot.com/admin/gmail/setup/oauth2callback");
