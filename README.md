@@ -1,5 +1,5 @@
-thundr-contrib-gmail [![Build Status](https://travis-ci.org/3wks/thundr-contrib-gmail.svg)](https://travis-ci.org/3wks/thundr-contrib-gmail)
-=======================
+thundr-contrib-gmail
+====================
 
 A thundr module for integrating with the Gmail API to send email.
 
