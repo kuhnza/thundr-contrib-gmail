@@ -1,16 +1,13 @@
-thundr-contrib-gae-blog [![Build Status](https://travis-ci.org/3wks/thundr-contrib-gae-blog.svg)](https://travis-ci.org/3wks/thundr-contrib-gae-blog)
+thundr-contrib-gmail [![Build Status](https://travis-ci.org/3wks/thundr-contrib-gmail.svg)](https://travis-ci.org/3wks/thundr-contrib-gmail)
 =======================
 
-
-A thundr module for presenting Blogger content on GAE apps
-
-This module provides services to access blog content authored on the [Blogger](http://www.blogger.com/) platform and show the content in a Google AppEngine application.
+A thundr module for integrating with the Gmail API to send email.
 
 
 Overview
 --------
 
-This module allows you to author and adminster blog content using Google's [Blogger](http://www.blogger.com/) platform and then access the blog posts via the [Blogger API](https://developers.google.com/blogger/docs/3.0/getting_started). Typically you would use this to show the blog posts on your GAE web app without the need to build your own blog authoring tools.
+This module allows you to send emails using the official Gmail API from Google while using a standard thundr `com.threewks.thundr.mail.Mailer`.
 
 
 Setup
@@ -21,17 +18,17 @@ To install the module include the dependency in your ApplicationModule. For exam
     @Override
     public void requires(DependencyRegistry dependencyRegistry) {
         super.requires(dependencyRegistry);
-        dependencyRegistry.addDependency(GaeBlogModule.class);
+        dependencyRegistry.addDependency(GmailModule.class);
     }
 
 This will do the following:
 
-- inject a `com.threewks.thundr.gae.blog.service.BlogService` into your injection context
+- inject a `com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow` named `gmailAuthorizationCodeFlow` used by the Gmail client. 
 - add the following routes
-  - /admin/blog/setup
-  - /admin/blog/setup/oauth2callback
+  - `/admin/gmail/setup`
+  - `/admin/gmail/setup/oauth2callback`
 
-You will also need to create a Google client id for your web application in order to access the content from Blogger. This can be done from the 'Credentials' screen on the [Google Developers Console](https://console.developers.google.com).
+You will also need to create a Google client id for your web application in order to access the Gmail API. This can be done from the 'API Manager' section of the [Google Developers Console](https://console.developers.google.com).
 
 Note: be sure to configure the redirect URIs and Javascript origins and to configure the consent screen with the required information.
 
@@ -41,48 +38,44 @@ Configuration
 
 The following **mandatory** configuration options must be set in your application.properties file:
 
-- bloggerBlogId - the ID of your blog (from Blogger)
-- bloggerOAuthClientId - the client id (from the Google Developer Console)
-- bloggerOAuthClientSecret - the client secret (from the Google Developer Console)
+- `host` - a complete URL to the host (eg: http://www.example.com). This is used to construct the OAuth callback URL.
+- `gmailOAuthClientId` - the client id (from the Google Developers Console)
+- `gmailOAuthClientSecret` - the client secret (from the Google Developer Console)
+
+The following **mandatory** dependencies must be injected into the InjectionContext:
+
+- `com.google.api.client.util.store.DataStoreFactory` - used by the Gmail API to persist the OAuth credentials (eg: for AppEngine use `com.google.api.client.extensions.appengine.datastore.AppEngineDataStoreFactory`).
+- `com.google.api.client.http.HttpTransport` - used to communicate with the Gmail API (eg: for AppEngine use `com.google.api.client.extensions.appengine.http.UrlFetchTransport`).
 
 The following **optional** configuration options can be set in your application.properties file:
 
-- blogAdminRootPath - you can optionally override the root path to the blog admin routes. By default the root is /admin/blog
+- `gmailAdminRootPath` - you can optionally override the root path to the gmail admin routes. By default the root is /admin/gmail
 
 
 Authorising Access
 ------------------
 
-Before you can use the module you must first authorise access to your blog via OAuth. To do this run your application and request the following route:
+Before you can use the module you must first authorise access to the Gmail account via OAuth. To do this run your application and request the following route:
 
-- /admin/blog/setup
+- `/admin/gmail/setup`
 
-This will redirect you to Google where you must login and authorise access to your blog. Once complete you will be directed back
-to your application and shown a success message. The OAuth credentials are stored the data store in the 'StoredCredential' entity
-which is managed by the Google API.
+This will redirect you to Google where you must login and authorise access to your Gmail account. Once complete you will be directed back
+to your application and shown a success message. The OAuth credentials are stored using the DataStoreFactory (eg: for AppEngine they will be stored in the 'StoredCredential' entity in the datastore).
 
-NOTE: it is possible (and recommended) to configure the blog to be private and only accessible by blog authors. This will ensure
-that your blog content is **not** available at http://&lt;yourblog&gt;.blogspot.com. This is beneficial for your Google page rank because
-Google will penalise you if you have the exact same content on multiple sites (ie: on blogspot.com as well as on your AppEngine app).
-
-By making the blog private the API will be able to access the blog content, but it will not be possible for anyone else to see it.
-  
-This can be configured from the Blogger settings under 'Basic' and modifying the 'Blog Readers' setting to be private. 
 
 Usage
 -----
 
-BlogService provides a simple wrapper for the underlying Google Blogger API. Some example usages are shown below:
+GmailMailer is a standard thundr `com.threewks.thundr.mail.Mailer`.
 
-List recent blog posts:
+eg:
 
-    PostList postList = blogService.listPosts();
-    for (Post post : postList.getItems()) {
-        System.out.println(post.getTitle());
-    }
+    mailer
+        .mail()
+        .from("from@email.com")
+        .to("to@email.com")
+        .subject("this is the subject")
+        .body(new StringView("this is the message"))
+        .send();
     
     
-Retrieve a specific post:
-
-    Post post = blogService.getPost("2015", "05", "my-blog-post");
-    System.out.println(post.getTitle());
