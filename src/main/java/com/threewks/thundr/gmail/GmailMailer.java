@@ -178,8 +178,10 @@ public class GmailMailer extends BaseMailer implements Mailer {
                     String attachmentContentType = renderer.getContentType();
                     String attachmentCharacterEncoding = renderer.getCharacterEncoding();
                     String fullContentType = attachmentContentType + "; charset=" + attachmentCharacterEncoding;
+					mimeBodyPart.setFileName(attachment.name());
                     mimeBodyPart.setContent(data, fullContentType);
                     mimeBodyPart.setDisposition(attachment.disposition().toString());
+					mimeBodyPart.setContentID("<" + attachment.name() + ">");
 
                     multipart.addBodyPart(mimeBodyPart);
                 }
