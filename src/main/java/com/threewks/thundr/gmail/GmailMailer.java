@@ -177,11 +177,8 @@ public class GmailMailer extends BaseMailer implements Mailer {
                     byte[] data = renderer.getOutputAsBytes();
                     String attachmentContentType = renderer.getContentType();
                     String attachmentCharacterEncoding = renderer.getCharacterEncoding();
-                    String fullContentType = attachmentContentType + "; charset=" + attachmentCharacterEncoding;
-					mimeBodyPart.setFileName(attachment.name());
-                    mimeBodyPart.setContent(data, fullContentType);
-                    mimeBodyPart.setDisposition(attachment.disposition().toString());
-					mimeBodyPart.setContentID("<" + attachment.name() + ">");
+
+					populateMimeBodyPart(mimeBodyPart, attachment, data, attachmentContentType, attachmentCharacterEncoding);
 
                     multipart.addBodyPart(mimeBodyPart);
                 }
@@ -199,7 +196,17 @@ public class GmailMailer extends BaseMailer implements Mailer {
         return email;
     }
 
-    /**
+	protected void populateMimeBodyPart(MimeBodyPart mimeBodyPart, Attachment attachment, byte[] data, String attachmentContentType, String attachmentCharacterEncoding) throws MessagingException {
+		String fullContentType = attachmentContentType + "; charset=" + attachmentCharacterEncoding;
+		mimeBodyPart.setFileName(attachment.name());
+		mimeBodyPart.setContent(data, fullContentType);
+		mimeBodyPart.setDisposition(attachment.disposition().toString());
+		if (attachment.isInline()) {
+            mimeBodyPart.setContentID("<" + attachment.name() + ">");
+        }
+	}
+
+	/**
      * Create a Message from an email
      *
      * @param email Email to be set to raw of message
