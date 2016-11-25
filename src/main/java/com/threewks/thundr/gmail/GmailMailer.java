@@ -19,19 +19,20 @@ package com.threewks.thundr.gmail;
 
 import com.atomicleopard.expressive.ETransformer;
 import com.atomicleopard.expressive.Expressive;
-import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.repackaged.org.apache.commons.codec.binary.Base64;
 import com.google.api.services.gmail.Gmail;
+import com.google.api.services.gmail.model.Draft;
 import com.google.api.services.gmail.model.Message;
 import com.threewks.thundr.exception.BaseException;
 import com.threewks.thundr.logger.Logger;
-import com.threewks.thundr.mail.Attachment;
 import com.threewks.thundr.mail.BaseMailer;
 import com.threewks.thundr.mail.Mailer;
 import com.threewks.thundr.view.BasicViewRenderer;
 import com.threewks.thundr.view.ViewResolverRegistry;
 
+import javax.activation.DataHandler;
+import javax.activation.DataSource;
 import javax.mail.Address;
 import javax.mail.MessagingException;
 import javax.mail.Multipart;
@@ -40,6 +41,7 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
+import javax.mail.util.ByteArrayDataSource;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -51,38 +53,45 @@ public class GmailMailer extends BaseMailer implements Mailer {
 
     private final GoogleAuthorizationCodeFlow flow;
 
-    private Gmail gmail;
-
     public GmailMailer(ViewResolverRegistry viewResolverRegistry, GoogleAuthorizationCodeFlow gmailAuthorizationCodeFlow) {
         super(viewResolverRegistry);
         this.flow = gmailAuthorizationCodeFlow;
     }
 
-    Gmail getClient() {
-        if (gmail == null) {
-            initClient();
-        }
-        return gmail;
+	/**
+	 *
+	 * @param credentialId is the id to save the {@link com.google.api.client.auth.oauth2.StoredCredential} in datastore used by oauth process
+	 *               You can use any unique id to associate your gmail account.
+	 *
+	 * @return gmail instance for the given credentialId
+	 */
+	protected Gmail getClient(String credentialId) {
+		try {
+			Logger.info("Loading StoredCredential id %s", credentialId);
+			return new Gmail.Builder(flow.getTransport(), flow.getJsonFactory(), flow.loadCredential(credentialId)).build();
+		} catch (IOException e) {
+			String message = String.format("Error loading stored credential for inbox %s: %s", credentialId, e.getMessage());
+			Logger.error(message);
+			throw new BaseException(e, message);
+		}
     }
 
-    protected void initClient() {
-        Credential credential;
-        try {
-            credential = flow.loadCredential(CREDENTIAL_USER_ID);
-        } catch (IOException e) {
-            String message = String.format("Error loading stored credential for user %s: %s", CREDENTIAL_USER_ID, e.getMessage());
-            Logger.error(message);
-            throw new BaseException(e, message);
-        }
-        gmail = new Gmail.Builder(flow.getTransport(), flow.getJsonFactory(), credential).build();
-    }
+	/**
+	 *
+	 * @return gmail instance. Saves the {@link com.google.api.client.auth.oauth2.StoredCredential}	 with id CREDENTIAL_USER_ID
+	 **/
+	protected Gmail getClient() {
+		return getClient(CREDENTIAL_USER_ID);
+	}
+
 
     @Override
-    protected void sendInternal(Map.Entry<String, String> from, Map.Entry<String, String> replyTo, Map<String, String> to, Map<String, String> cc, Map<String, String> bcc, String subject, Object body, List<Attachment> attachments) {
+    protected void sendInternal(Map.Entry<String, String> from, Map.Entry<String, String> replyTo, Map<String, String> to, Map<String, String> cc, Map<String, String> bcc, String subject, Object body, List<com.threewks.thundr.mail.Attachment> attachments) {
         sendGmailInternal(from, replyTo, to, cc, bcc, subject, body, attachments);
     }
 
-    protected void sendGmailInternal(Map.Entry<String, String> from, Map.Entry<String, String> replyTo, Map<String, String> to, Map<String, String> cc, Map<String, String> bcc, String subject, Object body, List<Attachment> attachments) {
+    @Deprecated
+    protected void sendGmailInternal(Map.Entry<String, String> from, Map.Entry<String, String> replyTo, Map<String, String> to, Map<String, String> cc, Map<String, String> bcc, String subject, Object body, List<com.threewks.thundr.mail.Attachment> attachments) {
         String content = render(body).getOutputAsString();
 
         InternetAddress fromAddress = Transformers.FormatInternetAddress.from(from);
@@ -137,7 +146,7 @@ public class GmailMailer extends BaseMailer implements Mailer {
      */
     protected MimeMessage createEmailWithAttachment(Set<InternetAddress> to, InternetAddress from, Set<InternetAddress> cc,
                                                     Set<InternetAddress> bcc, InternetAddress replyTo, String subject,
-                                                    String bodyText, List<Attachment> attachments) {
+                                                    String bodyText, List<com.threewks.thundr.mail.Attachment> attachments) {
         Properties props = new Properties();
         Session session = Session.getDefaultInstance(props, null);
 
@@ -169,7 +178,7 @@ public class GmailMailer extends BaseMailer implements Mailer {
             multipart.addBodyPart(mimeBodyPart);
 
             if (attachments != null) {
-                for (Attachment attachment : attachments) {
+                for (com.threewks.thundr.mail.Attachment attachment : attachments) {
                     mimeBodyPart = new MimeBodyPart();
 
                     BasicViewRenderer renderer = new BasicViewRenderer(viewResolverRegistry);
@@ -219,7 +228,63 @@ public class GmailMailer extends BaseMailer implements Mailer {
         return message;
     }
 
-    public static class Transformers {
+	/**
+	 * Sends a draft email to the authrorised application linked to {@link com.google.api.client.auth.oauth2.StoredCredential} id/name credentialId
+	 * in datastore.
+	 * @param body
+	 * @param subject
+	 * @param toAddress
+	 * @param attachments
+	 * @param credentialId the id/name used to store the {@link com.google.api.client.auth.oauth2.StoredCredential} in datastore
+	 */
+	public void createDraft(String body, String subject, Map<String, String> toAddress, List<Attachment> attachments, String credentialId) {
+		try {
+			MimeMessage email = createMime(body, subject, toAddress, attachments);
+			Message message = createMessageWithEmail(email);
+			Draft draft = new Draft();
+			draft.setMessage(message);
+			Gmail gmail = getClient(credentialId);
+			Logger.info("created gmail client %s", gmail);
+			gmail.users().drafts().create("me", draft).execute();
+			Logger.info("Draft email sent");
+		} catch (Exception e) {
+			String message = String.format("Error creating draft with body[%s], subject[%s], credentialId[%s]", body, subject, credentialId);
+			Logger.error(message);
+			throw new GmailException(e);
+		}
+	}
+
+	private MimeMessage createMime(String bodyText, String subject, Map<String, String> to, List<Attachment> pdfs) throws MessagingException {
+		Properties props = new Properties();
+		Session session = Session.getDefaultInstance(props, null);
+		MimeMessage email = new MimeMessage(session);
+		Set<InternetAddress> toAddresses = getInternetAddresses(to);
+
+		if (!toAddresses.isEmpty()) {
+			email.addRecipients(javax.mail.Message.RecipientType.TO, toAddresses.toArray(new InternetAddress[to.size()]));
+		}
+		
+		email.setSubject(subject);
+
+		MimeBodyPart mimeBodyPart = new MimeBodyPart();
+		mimeBodyPart.setContent(bodyText, "text/html");
+		mimeBodyPart.setHeader("Content-Type", "text/html; charset=\"UTF-8\"");
+
+		Multipart multipart = new MimeMultipart();
+		for (Attachment attachmentPdf : pdfs) {
+			MimeBodyPart attachment = new MimeBodyPart();
+			DataSource source = new ByteArrayDataSource(attachmentPdf.getData(), "application/pdf");
+			attachment.setDataHandler(new DataHandler(source));
+			attachment.setFileName(attachmentPdf.getFileName());
+			multipart.addBodyPart(mimeBodyPart);
+			multipart.addBodyPart(attachment);
+		}
+		email.setContent(multipart);
+		return email;
+	}
+
+
+	public static class Transformers {
 
         public static final ETransformer<Map.Entry<String, String>, InternetAddress> FormatInternetAddress = new ETransformer<Map.Entry<String, String>, InternetAddress>() {
             @Override

@@ -27,7 +27,6 @@ import com.google.api.services.gmail.GmailScopes;
 import com.threewks.thundr.route.Router;
 import com.threewks.thundr.view.redirect.RedirectView;
 import com.threewks.thundr.view.string.StringView;
-import junit.framework.TestCase;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,9 +40,7 @@ import java.util.Collections;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class GmailAdminControllerTest {
@@ -71,8 +68,11 @@ public class GmailAdminControllerTest {
 	}
 
 	@Test
-	public void shouldSetupAuhorisationUrlAndRedirect() {
-		RedirectView view = controller.setup();
+	public void shouldSetupAuthorisationUrlAndRedirect() {
+		RedirectView view = controller.setup("law");
+		assertThat(view.getRedirect(), is("https://accounts.google.com/o/oauth2/auth?access_type=offline&approval_prompt=force&client_id=clientId&redirect_uri=https://gradresearchforms.apps.monash.edu/admin/gmail/setup/oauth2callback?credentialId%3Dlaw&response_type=code&scope=https://www.googleapis.com/auth/gmail.compose"));
+
+		view = controller.setup(null);
 		assertThat(view.getRedirect(), is("https://accounts.google.com/o/oauth2/auth?access_type=offline&approval_prompt=force&client_id=clientId&redirect_uri=https://gradresearchforms.apps.monash.edu/admin/gmail/setup/oauth2callback&response_type=code&scope=https://www.googleapis.com/auth/gmail.compose"));
 	}
 
@@ -90,13 +90,24 @@ public class GmailAdminControllerTest {
 
 		controller = new GmailAdminController(flow, router, "https://monash-scholarship-form-dev.appspot.com");
 
-		StringView view = controller.oauthCallback("12345");
+		StringView view = controller.oauthCallback("12345", null);
 		assertThat(view.content(), is("Gmail setup complete"));
 
 		verify(flow).newTokenRequest("12345");
 		verify(tokenRequest).setRedirectUri("https://monash-scholarship-form-dev.appspot.com/admin/gmail/setup/oauth2callback");
 		verify(tokenRequest).execute();
 		verify(flow).createAndStoreCredential(tokenResponse, "gmail-credentials");
+
+
+		view = controller.oauthCallback("12345", "monash.inbox@monash.edu.au");
+		assertThat(view.content(), is("Gmail setup complete"));
+
+		verify(flow, times(2)).newTokenRequest("12345");
+		verify(tokenRequest, times(1)).setRedirectUri("https://monash-scholarship-form-dev.appspot.com/admin/gmail/setup/oauth2callback?credentialId=monash.inbox@monash.edu.au");
+		verify(tokenRequest, times(2)).execute();
+		verify(flow, times(1)).createAndStoreCredential(tokenResponse, "monash.inbox@monash.edu.au");
+
+
 	}
 
 }
