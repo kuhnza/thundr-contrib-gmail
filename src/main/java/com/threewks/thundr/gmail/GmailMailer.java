@@ -28,7 +28,8 @@ import com.threewks.thundr.exception.BaseException;
 import com.threewks.thundr.logger.Logger;
 import com.threewks.thundr.mail.BaseMailer;
 import com.threewks.thundr.mail.Mailer;
-import com.threewks.thundr.view.BasicViewRenderer;
+import com.threewks.thundr.request.InMemoryResponse;
+import com.threewks.thundr.request.RequestContainer;
 import com.threewks.thundr.view.ViewResolverRegistry;
 
 import javax.activation.DataHandler;
@@ -45,23 +46,26 @@ import javax.mail.util.ByteArrayDataSource;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.util.*;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 
 public class GmailMailer extends BaseMailer implements Mailer {
 
-    public static final String CREDENTIAL_USER_ID = "gmail-credentials";
+	public static final String CREDENTIAL_USER_ID = "gmail-credentials";
 
-    private final GoogleAuthorizationCodeFlow flow;
+	private final GoogleAuthorizationCodeFlow flow;
 
-    public GmailMailer(ViewResolverRegistry viewResolverRegistry, GoogleAuthorizationCodeFlow gmailAuthorizationCodeFlow) {
-        super(viewResolverRegistry);
-        this.flow = gmailAuthorizationCodeFlow;
-    }
+	public GmailMailer(ViewResolverRegistry viewResolverRegistry, GoogleAuthorizationCodeFlow gmailAuthorizationCodeFlow, RequestContainer requestContainer) {
+		super(viewResolverRegistry, requestContainer);
+		this.flow = gmailAuthorizationCodeFlow;
+	}
 
 	/**
-	 *
 	 * @param credentialId is the id to save the {@link com.google.api.client.auth.oauth2.StoredCredential} in datastore used by oauth process
-	 *               You can use any unique id to associate your gmail account.
+	 *                     You can use any unique id to associate your gmail account.
 	 *
 	 * @return gmail instance for the given credentialId
 	 */
@@ -74,7 +78,7 @@ public class GmailMailer extends BaseMailer implements Mailer {
 			Logger.error(message);
 			throw new BaseException(e, message);
 		}
-    }
+	}
 
 	/**
 	 *
@@ -85,157 +89,157 @@ public class GmailMailer extends BaseMailer implements Mailer {
 	}
 
 
-    @Override
-    protected void sendInternal(Map.Entry<String, String> from, Map.Entry<String, String> replyTo, Map<String, String> to, Map<String, String> cc, Map<String, String> bcc, String subject, Object body, List<com.threewks.thundr.mail.Attachment> attachments) {
-        sendGmailInternal(from, replyTo, to, cc, bcc, subject, body, attachments);
-    }
+	@Override
+	protected void sendInternal(Map.Entry<String, String> from, Map.Entry<String, String> replyTo, Map<String, String> to, Map<String, String> cc, Map<String, String> bcc, String subject, Object body, List<com.threewks.thundr.mail.Attachment> attachments) {
+		sendGmailInternal(from, replyTo, to, cc, bcc, subject, body, attachments);
+	}
 
-    @Deprecated
-    protected void sendGmailInternal(Map.Entry<String, String> from, Map.Entry<String, String> replyTo, Map<String, String> to, Map<String, String> cc, Map<String, String> bcc, String subject, Object body, List<com.threewks.thundr.mail.Attachment> attachments) {
-        String content = render(body).getOutputAsString();
+	@Deprecated
+	protected void sendGmailInternal(Map.Entry<String, String> from, Map.Entry<String, String> replyTo, Map<String, String> to, Map<String, String> cc, Map<String, String> bcc, String subject, Object body, List<com.threewks.thundr.mail.Attachment> attachments) {
+		String content = render(body).getBodyAsString();
 
-        InternetAddress fromAddress = Transformers.FormatInternetAddress.from(from);
-        InternetAddress replyToAddress = null;
+		InternetAddress fromAddress = Transformers.FormatInternetAddress.from(from);
+		InternetAddress replyToAddress = null;
 
-        Set<InternetAddress> toAddresses = null;
-        Set<InternetAddress> ccAddresses = null;
-        Set<InternetAddress> bccAddresses = null;
+		Set<InternetAddress> toAddresses = null;
+		Set<InternetAddress> ccAddresses = null;
+		Set<InternetAddress> bccAddresses = null;
 
-        if (Expressive.isNotEmpty(to)) {
-            toAddresses = getInternetAddresses(to);
-        }
-        if (Expressive.isNotEmpty(cc)) {
-            ccAddresses = getInternetAddresses(cc);
-        }
-        if (Expressive.isNotEmpty(bcc)) {
-            bccAddresses = getInternetAddresses(bcc);
-        }
-        if (replyTo != null) {
-            replyToAddress = Transformers.FormatInternetAddress.from(replyTo);
-        }
+		if (Expressive.isNotEmpty(to)) {
+			toAddresses = getInternetAddresses(to);
+		}
+		if (Expressive.isNotEmpty(cc)) {
+			ccAddresses = getInternetAddresses(cc);
+		}
+		if (Expressive.isNotEmpty(bcc)) {
+			bccAddresses = getInternetAddresses(bcc);
+		}
+		if (replyTo != null) {
+			replyToAddress = Transformers.FormatInternetAddress.from(replyTo);
+		}
 
-        MimeMessage mimeMessage = createEmailWithAttachment(toAddresses, fromAddress, ccAddresses, bccAddresses,
-                replyToAddress, subject, content, attachments);
+		MimeMessage mimeMessage = createEmailWithAttachment(toAddresses, fromAddress, ccAddresses, bccAddresses,
+				replyToAddress, subject, content, attachments);
 
-        Message message = createMessageWithEmail(mimeMessage);
-        try {
-            getClient().users().messages().send("me", message).execute();
-        } catch (IOException e) {
-            Logger.error("Failed to send email: %s", e.getMessage());
-            throw new GmailException(e);
-        }
-    }
+		Message message = createMessageWithEmail(mimeMessage);
+		try {
+			getClient().users().messages().send("me", message).execute();
+		} catch (IOException e) {
+			Logger.error("Failed to send email: %s", e.getMessage());
+			throw new GmailException(e);
+		}
+	}
 
-    private Set<InternetAddress> getInternetAddresses(Map<String, String> addressStrings) {
-        Set<InternetAddress> addresses = new LinkedHashSet<>();
-        for (Map.Entry<String, String> toAddrStr : addressStrings.entrySet()) {
-            addresses.add(Transformers.FormatInternetAddress.from(toAddrStr));
-        }
-        return addresses;
-    }
+	private Set<InternetAddress> getInternetAddresses(Map<String, String> addressStrings) {
+		Set<InternetAddress> addresses = new LinkedHashSet<>();
+		for (Map.Entry<String, String> toAddrStr : addressStrings.entrySet()) {
+			addresses.add(Transformers.FormatInternetAddress.from(toAddrStr));
+		}
+		return addresses;
+	}
 
-    /**
-     * Create a MimeMessage using the parameters provided.
-     *
-     * @param to       Email address of the receiver.
-     * @param from     Email address of the sender, the mailbox account.
-     * @param subject  Subject of the email.
-     * @param bodyText Body text of the email.
-     * @return MimeMessage to be used to send email.
-     * @throws MessagingException
-     */
-    protected MimeMessage createEmailWithAttachment(Set<InternetAddress> to, InternetAddress from, Set<InternetAddress> cc,
-                                                    Set<InternetAddress> bcc, InternetAddress replyTo, String subject,
-                                                    String bodyText, List<com.threewks.thundr.mail.Attachment> attachments) {
-        Properties props = new Properties();
-        Session session = Session.getDefaultInstance(props, null);
+	/**
+	 * Create a MimeMessage using the parameters provided.
+	 *
+	 * @param to       Email address of the receiver.
+	 * @param from     Email address of the sender, the mailbox account.
+	 * @param subject  Subject of the email.
+	 * @param bodyText Body text of the email.
+	 * @return MimeMessage to be used to send email.
+	 * @throws MessagingException
+	 */
+	protected MimeMessage createEmailWithAttachment(Set<InternetAddress> to, InternetAddress from, Set<InternetAddress> cc,
+			Set<InternetAddress> bcc, InternetAddress replyTo, String subject,
+			String bodyText, List<com.threewks.thundr.mail.Attachment> attachments) {
+		Properties props = new Properties();
+		Session session = Session.getDefaultInstance(props, null);
 
-        MimeMessage email = new MimeMessage(session);
-        try {
+		MimeMessage email = new MimeMessage(session);
+		try {
 
-            email.setFrom(from);
+			email.setFrom(from);
 
-            if (to != null) {
-                email.addRecipients(javax.mail.Message.RecipientType.TO, to.toArray(new InternetAddress[to.size()]));
-            }
-            if (cc != null) {
-                email.addRecipients(javax.mail.Message.RecipientType.CC, cc.toArray(new InternetAddress[cc.size()]));
-            }
-            if (bcc != null) {
-                email.addRecipients(javax.mail.Message.RecipientType.BCC, bcc.toArray(new InternetAddress[bcc.size()]));
-            }
-            if (replyTo != null) {
-                email.setReplyTo(new Address[]{replyTo});
-            }
+			if (to != null) {
+				email.addRecipients(javax.mail.Message.RecipientType.TO, to.toArray(new InternetAddress[to.size()]));
+			}
+			if (cc != null) {
+				email.addRecipients(javax.mail.Message.RecipientType.CC, cc.toArray(new InternetAddress[cc.size()]));
+			}
+			if (bcc != null) {
+				email.addRecipients(javax.mail.Message.RecipientType.BCC, bcc.toArray(new InternetAddress[bcc.size()]));
+			}
+			if (replyTo != null) {
+				email.setReplyTo(new Address[] { replyTo });
+			}
 
-            email.setSubject(subject);
+			email.setSubject(subject);
 
-            MimeBodyPart mimeBodyPart = new MimeBodyPart();
-            mimeBodyPart.setContent(bodyText, "text/html");
-            mimeBodyPart.setHeader("Content-Type", "text/html; charset=\"UTF-8\"");
+			MimeBodyPart mimeBodyPart = new MimeBodyPart();
+			mimeBodyPart.setContent(bodyText, "text/html");
+			mimeBodyPart.setHeader("Content-Type", "text/html; charset=\"UTF-8\"");
 
-            Multipart multipart = new MimeMultipart();
-            multipart.addBodyPart(mimeBodyPart);
+			Multipart multipart = new MimeMultipart();
+			multipart.addBodyPart(mimeBodyPart);
 
-            if (attachments != null) {
-                for (com.threewks.thundr.mail.Attachment attachment : attachments) {
-                    mimeBodyPart = new MimeBodyPart();
+			if (attachments != null) {
+				for (com.threewks.thundr.mail.Attachment attachment : attachments) {
+					mimeBodyPart = new MimeBodyPart();
 
-                    BasicViewRenderer renderer = new BasicViewRenderer(viewResolverRegistry);
-                    renderer.render(attachment.view());
-                    byte[] data = renderer.getOutputAsBytes();
-                    String attachmentContentType = renderer.getContentType();
-                    String attachmentCharacterEncoding = renderer.getCharacterEncoding();
+					InMemoryResponse renderedResult = render(attachment.view());
+
+					byte[] data = renderedResult.getBodyAsBytes();
+					String attachmentContentType = renderedResult.getContentTypeString();
+					String attachmentCharacterEncoding = renderedResult.getCharacterEncoding();
 
 					populateMimeBodyPart(mimeBodyPart, attachment, data, attachmentContentType, attachmentCharacterEncoding);
 
-                    multipart.addBodyPart(mimeBodyPart);
-                }
-            }
+					multipart.addBodyPart(mimeBodyPart);
+				}
+			}
 
-            email.setContent(multipart);
-        } catch (MessagingException e) {
-            Logger.error(e.getMessage());
-            Logger.error("Failed to create email from: %s;%s, to: %s, cc: %s, bcc: %s, replyTo %s;%s, subject %s, body %s, number of attachments %d", from.getAddress(), from.getPersonal(),
+			email.setContent(multipart);
+		} catch (MessagingException e) {
+			Logger.error(e.getMessage());
+			Logger.error("Failed to create email from: %s;%s, to: %s, cc: %s, bcc: %s, replyTo %s;%s, subject %s, body %s, number of attachments %d", from.getAddress(), from.getPersonal(),
 					Transformers.InternetAddressesToString.from(to), Transformers.InternetAddressesToString.from(cc), Transformers.InternetAddressesToString.from(bcc),
 					replyTo == null ? "null" : replyTo.getAddress(), replyTo == null ? "null" : replyTo.getPersonal(), subject, bodyText, attachments == null ? 0 : attachments.size());
-            throw new GmailException(e);
-        }
+			throw new GmailException(e);
+		}
 
-        return email;
-    }
+		return email;
+	}
 
-	protected void populateMimeBodyPart(MimeBodyPart mimeBodyPart, Attachment attachment, byte[] data, String attachmentContentType, String attachmentCharacterEncoding) throws MessagingException {
+	protected void populateMimeBodyPart(MimeBodyPart mimeBodyPart, com.threewks.thundr.mail.Attachment attachment, byte[] data, String attachmentContentType, String attachmentCharacterEncoding) throws MessagingException {
 		String fullContentType = attachmentContentType + "; charset=" + attachmentCharacterEncoding;
 		mimeBodyPart.setFileName(attachment.name());
 		mimeBodyPart.setContent(data, fullContentType);
 		mimeBodyPart.setDisposition(attachment.disposition().toString());
 		if (attachment.isInline()) {
-            mimeBodyPart.setContentID("<" + attachment.name() + ">");
-        }
+			mimeBodyPart.setContentID("<" + attachment.name() + ">");
+		}
 	}
 
 	/**
-     * Create a Message from an email
-     *
-     * @param email Email to be set to raw of message
-     * @return Message containing base64url encoded email.
-     * @throws IOException
-     * @throws MessagingException
-     */
-    protected Message createMessageWithEmail(MimeMessage email) {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try {
-            email.writeTo(bytes);
-        } catch (MessagingException | IOException e) {
-            Logger.error("Could not write email to output stream: %s", e.getMessage());
-            throw new GmailException(e);
-        }
-        String encodedEmail = Base64.encodeBase64URLSafeString(bytes.toByteArray());
-        Message message = new Message();
-        message.setRaw(encodedEmail);
-        return message;
-    }
+	 * Create a Message from an email
+	 *
+	 * @param email Email to be set to raw of message
+	 * @return Message containing base64url encoded email.
+	 * @throws IOException
+	 * @throws MessagingException
+	 */
+	protected Message createMessageWithEmail(MimeMessage email) {
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		try {
+			email.writeTo(bytes);
+		} catch (MessagingException | IOException e) {
+			Logger.error("Could not write email to output stream: %s", e.getMessage());
+			throw new GmailException(e);
+		}
+		String encodedEmail = Base64.encodeBase64URLSafeString(bytes.toByteArray());
+		Message message = new Message();
+		message.setRaw(encodedEmail);
+		return message;
+	}
 
 	/**
 	 * Sends a draft email to the authrorised application linked to {@link com.google.api.client.auth.oauth2.StoredCredential} id/name credentialId
@@ -272,7 +276,7 @@ public class GmailMailer extends BaseMailer implements Mailer {
 		if (!toAddresses.isEmpty()) {
 			email.addRecipients(javax.mail.Message.RecipientType.TO, toAddresses.toArray(new InternetAddress[to.size()]));
 		}
-		
+
 		email.setSubject(subject);
 
 		MimeBodyPart mimeBodyPart = new MimeBodyPart();
@@ -295,29 +299,29 @@ public class GmailMailer extends BaseMailer implements Mailer {
 
 	public static class Transformers {
 
-        public static final ETransformer<Map.Entry<String, String>, InternetAddress> FormatInternetAddress = new ETransformer<Map.Entry<String, String>, InternetAddress>() {
-            @Override
-            public InternetAddress from(Map.Entry<String, String> address) {
-                try {
-                    return new InternetAddress(address.getKey(), address.getValue());
-                } catch (UnsupportedEncodingException e) {
-                    Logger.error(e.getMessage());
-                    Logger.error("Error converting email address %s, %s to an Internet Address", address.getKey(), address.getValue());
-                    throw new GmailException(e);
-                }
-            }
-        };
-        public static final ETransformer<Set<InternetAddress>, String> InternetAddressesToString = new ETransformer<Set<InternetAddress>, String>() {
-            @Override
-            public String from(Set<InternetAddress> internetAddresses) {
-                StringBuilder builder = new StringBuilder();
-                for (InternetAddress address: internetAddresses) {
-                    builder.append(address.getAddress())
-                    .append(",")
-                    .append(address.getPersonal());
-                }
-                return builder.toString();
-            }
-        };
-    }
+		public static final ETransformer<Map.Entry<String, String>, InternetAddress> FormatInternetAddress = new ETransformer<Map.Entry<String, String>, InternetAddress>() {
+			@Override
+			public InternetAddress from(Map.Entry<String, String> address) {
+				try {
+					return new InternetAddress(address.getKey(), address.getValue());
+				} catch (UnsupportedEncodingException e) {
+					Logger.error(e.getMessage());
+					Logger.error("Error converting email address %s, %s to an Internet Address", address.getKey(), address.getValue());
+					throw new GmailException(e);
+				}
+			}
+		};
+		public static final ETransformer<Set<InternetAddress>, String> InternetAddressesToString = new ETransformer<Set<InternetAddress>, String>() {
+			@Override
+			public String from(Set<InternetAddress> internetAddresses) {
+				StringBuilder builder = new StringBuilder();
+				for (InternetAddress address : internetAddresses) {
+					builder.append(address.getAddress())
+							.append(",")
+							.append(address.getPersonal());
+				}
+				return builder.toString();
+			}
+		};
+	}
 }

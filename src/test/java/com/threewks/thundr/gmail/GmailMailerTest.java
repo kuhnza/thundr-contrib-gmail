@@ -22,6 +22,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.util.Base64;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.Message;
+import com.threewks.thundr.request.RequestContainer;
 import com.threewks.thundr.view.ViewResolverRegistry;
 import com.threewks.thundr.view.string.StringView;
 import com.threewks.thundr.view.string.StringViewResolver;
@@ -50,6 +51,7 @@ public class GmailMailerTest {
 	@Mock private Gmail.Users users;
 	@Mock private Gmail.Users.Messages messages;
 	@Mock private Gmail.Users.Messages.Send send;
+	@Mock private RequestContainer requestContainer;
 
 	@Captor private ArgumentCaptor<Message> messageCaptor;
 
@@ -61,7 +63,7 @@ public class GmailMailerTest {
 		ViewResolverRegistry viewResolverRegistry = new ViewResolverRegistry();
 		viewResolverRegistry.addResolver(StringView.class, new StringViewResolver());
 
-		mailer = spy(new GmailMailer(viewResolverRegistry, flow));
+		mailer = spy(new GmailMailer(viewResolverRegistry, flow, requestContainer));
 
 		doReturn(gmail).when(mailer).getClient();
 		when(gmail.users()).thenReturn(users);
